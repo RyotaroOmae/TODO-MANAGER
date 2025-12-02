@@ -1,0 +1,168 @@
+#!/bin/bash
+
+STATE_DIR="$HOME/.todo_state"
+mkdir -p "$STATE_DIR"
+
+PRIOR_FILE="$STATE_DIR/prior"
+TMRR_FILE="$STATE_DIR/tmrr"
+TODAY_FILE="$STATE_DIR/today"
+
+# --------- 共通リストハンドラ（prior, today, tmrr など） ---------
+handle_list() {
+  local key="$1"
+  shift
+  local file="$STATE_DIR/$key"
+  local subcmd="$1"
+
+  # reset
+  if [ "$subcmd" = "reset" ]; then
+    : > "$file"
+    echo "$key list reset"
+    return
+  fi
+
+  # del: 指定番号を削除
+  if [ "$subcmd" = "del" ]; then
+    local num="$2"
+    if ! [[ "$num" =~ ^[0-9]+$ ]]; then
+      echo "Usage: todo $key del <number>"
+      return
+    fi
+
+    if [ ! -s "$file" ]; then
+      echo "$key list is empty"
+      return
+    fi
+
+    # 指定行を削除
+    sed -i "${num}d" "$file"
+    echo "deleted line $num from $key"
+    return
+  fi
+
+
+  # 引数なし → 表示
+  if [ -z "$subcmd" ]; then
+    if [ ! -s "$file" ]; then
+      echo "$key list is empty"
+      return
+    fi
+
+    echo "$key list:"
+
+    # tmrr は 1列目が日付、それ以降が本文という前提で本文だけ表示
+    if [ "$key" = "tmrr" ]; then
+      awk '
+        {
+          # タブ区切りを想定。なければ行全体を本文とみなす
+          n++
+          split($0, a, "\t")
+          if (length(a) > 1) {
+            printf "%6d  %s\n", n, a[2]
+          } else {
+            printf "%6d  %s\n", n, $0
+          }
+        }
+      ' "$file"
+    else
+      nl -ba "$file"
+    fi
+
+    return
+  fi
+
+  # 追加（2つ目以降全部）
+  local item="${*:1}"
+
+  if [ "$key" = "tmrr" ]; then
+    # tmrr は日付付きで保存（YYYY-MM-DD<TAB>本文）
+    local today_str
+    today_str=$(date +%F)   # 例: 2025-12-02
+    printf '%s\t%s\n' "$today_str" "$item" >> "$file"
+  else
+    echo "$item" >> "$file"
+  fi
+
+  echo "added to $key: $item"
+}
+
+# --------- tmrr → today の更新 ---------
+update_tmrr_to_today() {
+  # GNU date 前提: Linux 等
+  local yesterday
+  yesterday=$(date -d "yesterday" +%F)
+
+  # macOS の場合は上の1行をコメントアウトして、下を使う：
+  # yesterday=$(date -v-1d +%F)
+
+  if [ ! -s "$TMRR_FILE" ]; then
+    echo "tmrr list is empty; nothing to update"
+    return
+  fi
+
+  local tmp
+  tmp=$(mktemp)
+
+  local moved_count=0
+
+  while IFS= read -r line; do
+    # 期待形式: "YYYY-MM-DD<TAB>本文"
+    # タブがない場合は日付なしとして扱い、tmrr に残す
+    if [[ "$line" == *$'\t'* ]]; then
+      local date_part text_part
+      date_part=${line%%$'\t'*}
+      text_part=${line#*$'\t'}
+
+      if [ "$date_part" = "$yesterday" ]; then
+        echo "$text_part" >> "$TODAY_FILE"
+        moved_count=$((moved_count + 1))
+      else
+        echo "$line" >> "$tmp"
+      fi
+    else
+      # フォーマット不明 → そのまま残す
+      echo "$line" >> "$tmp"
+    fi
+  done < "$TMRR_FILE"
+
+  mv "$tmp" "$TMRR_FILE"
+
+  echo "moved $moved_count item(s) written on $yesterday from tmrr to today"
+}
+
+# --------- メイン ---------
+case "$1" in
+  prior)
+    shift
+    handle_list "prior" "$@"
+    ;;
+
+  tmrr)
+    shift
+    handle_list "tmrr" "$@"
+    ;;
+
+  today)
+    shift
+    handle_list "today" "$@"
+    ;;
+
+  update)
+    update_tmrr_to_today
+    ;;
+
+  *)
+    echo "Usage:"
+    echo "  todo prior [TEXT...]     # prior に追加 / 表示"
+    echo "  todo prior reset         # prior 全消し"
+    echo
+    echo "  todo tmrr [TEXT...]      # tmrr に追加 / 表示（内部的には日付付き）"
+    echo "  todo tmrr reset          # tmrr 全消し"
+    echo
+    echo "  todo today [TEXT...]     # today に追加 / 表示"
+    echo "  todo today reset         # today 全消し"
+    echo
+    echo "  todo update              # tmrr から『昨日書かれたもの』だけ today に移動"
+    ;;
+esac
+
