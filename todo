@@ -86,6 +86,14 @@ handle_list() {
   echo "added to $key: $item"
 }
 
+show_all_lists() {
+  for key in prior tmrr today; do
+    echo "=== $key ==="
+    handle_list "$key"      # 引数なし → そのリストを表示
+    echo
+  done
+}
+
 # --------- tmrr → today の更新 ---------
 update_tmrr_to_today() {
   # GNU date 前提: Linux 等
@@ -129,6 +137,13 @@ update_tmrr_to_today() {
 
   echo "moved $moved_count item(s) written on $yesterday from tmrr to today"
 }
+
+# 引数なし: すべてのリストを表示
+if [ $# -eq 0 ]; then
+  show_all_lists
+  exit 0
+fi
+
 
 # --------- メイン ---------
 case "$1" in
