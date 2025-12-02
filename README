@@ -1,0 +1,143 @@
+todo — Simple CLI Task Manager
+
+todo is a lightweight command-line task manager written in Bash.
+It stores task lists as plain text under ~/.todo_state and supports adding, viewing, deleting, and updating tasks.
+The design is minimal, fast, and highly customizable.
+
+Features
+
+Multiple task lists (prior, tmrr, today)
+
+Add tasks without quotes (spaces allowed)
+
+Numbered list display
+
+Delete tasks by number (e.g., todo tmrr del 3)
+
+Reset lists entirely
+
+Automatically move tasks written yesterday in tmrr → today with todo update
+
+Persistent storage using simple text files
+
+Easy to customize Bash implementation
+
+Storage Structure
+
+All lists are stored in:
+
+~/.todo_state/
+    ├─ prior
+    ├─ tmrr
+    └─ today
+
+tmrr entry format (date + task)
+
+tmrr items include a creation date so the update command can detect “yesterday’s tasks”:
+
+YYYY-MM-DD<TAB>Task content
+
+
+Example:
+
+2025-12-02    Prepare meeting slides
+
+Installation
+
+Save the script as:
+
+~/bin/todo
+
+Make it executable:
+
+chmod +x ~/bin/todo
+
+Add to your PATH (in ~/.bashrc, ~/.zshrc, etc.):
+
+export PATH="$HOME/bin:$PATH"
+
+Reload your shell:
+
+source ~/.bashrc
+
+Usage
+Add a task
+todo prior Finish report
+todo tmrr Prepare slides
+todo today Buy groceries
+
+Show list
+todo prior
+todo tmrr
+todo today
+
+Reset list
+todo prior reset
+todo tmrr reset
+todo today reset
+
+Delete task by number
+todo prior del 1
+todo tmrr del 3
+todo today del 2
+
+Move yesterday’s tmrr tasks to today
+todo update
+
+
+This command:
+
+Reads all entries in tmrr
+
+Moves entries dated yesterday to today
+
+Leaves other entries unchanged
+
+Optional: Auto-update with cron
+
+To run todo update automatically every morning:
+
+Edit your crontab:
+
+crontab -e
+
+Add:
+
+5 0 * * * /home/USERNAME/bin/todo update
+
+
+Runs daily at 00:05.
+
+Example Workflow
+$ todo tmrr Review proposal
+$ todo tmrr Write slides
+
+$ todo tmrr
+tmrr list:
+     1  Review proposal
+     2  Write slides
+
+(next day)
+
+$ todo update
+moved 2 item(s) written yesterday from tmrr to today
+
+$ todo today
+today list:
+     1  Review proposal
+     2  Write slides
+
+Customization
+
+This script is easy to extend.
+Possible additions:
+
+Editing tasks (todo tmrr edit 3)
+
+Searching tasks
+
+Color output
+
+Additional lists (done, notes, someday)
+
+JSON/YAML storage
