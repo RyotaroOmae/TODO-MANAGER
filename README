@@ -1,143 +1,201 @@
-todo — Simple CLI Task Manager
+# todo — Extensible CLI Task Manager (Bash)
 
-todo is a lightweight command-line task manager written in Bash.
-It stores task lists as plain text under ~/.todo_state and supports adding, viewing, deleting, and updating tasks.
-The design is minimal, fast, and highly customizable.
+`todo` is a lightweight and extensible command-line task manager written in Bash.
+It manages task lists as plain text files and allows dynamic list definitions via environment variables.
 
-Features
+The design is intentionally simple: no database, no daemon, no shell startup hooks.
 
-Multiple task lists (prior, tmrr, today)
+---
 
-Add tasks without quotes (spaces allowed)
+## Features
 
-Numbered list display
+- Multiple task lists (e.g. `prior`, `tmrr`, `today`)
+- Lists are dynamically defined via environment variables
+- Add tasks without quotes (spaces allowed)
+- Numbered list display
+- Delete tasks by number
+- Reset lists
+- Automatically move tasks written *yesterday* from `tmrr` to `today`
+- Persistent storage using plain text files
+- Compatible with Linux and macOS
 
-Delete tasks by number (e.g., todo tmrr del 3)
+---
 
-Reset lists entirely
+## Storage Structure
 
-Automatically move tasks written yesterday in tmrr → today with todo update
-
-Persistent storage using simple text files
-
-Easy to customize Bash implementation
-
-Storage Structure
-
-All lists are stored in:
+All task data is stored under:
 
 ~/.todo_state/
-    ├─ prior
-    ├─ tmrr
-    └─ today
 
-tmrr entry format (date + task)
+Each list corresponds to a file:
 
-tmrr items include a creation date so the update command can detect “yesterday’s tasks”:
+~/.todo_state/prior  
+~/.todo_state/tmrr  
+~/.todo_state/today  
+
+---
+
+## tmrr Entry Format
+
+The list defined as `tmrr` stores items with a date prefix:
 
 YYYY-MM-DD<TAB>Task content
 
-
 Example:
 
-2025-12-02    Prepare meeting slides
+2025-12-02	Prepare meeting slides
 
-Installation
+This format is required for the `todo update` command.
 
-Save the script as:
+---
+
+## Installation
+
+1. Save the script as:
 
 ~/bin/todo
 
-Make it executable:
+2. Make it executable:
 
 chmod +x ~/bin/todo
 
-Add to your PATH (in ~/.bashrc, ~/.zshrc, etc.):
+3. Add the directory to your PATH (e.g. in `~/.bashrc` or `~/.zshrc`):
 
 export PATH="$HOME/bin:$PATH"
 
-Reload your shell:
+4. Reload your shell:
 
 source ~/.bashrc
 
-Usage
-Add a task
-todo prior Finish report
-todo tmrr Prepare slides
-todo today Buy groceries
+---
 
-Show list
-todo prior
-todo tmrr
-todo today
+## Configuration
 
-Reset list
-todo prior reset
-todo tmrr reset
-todo today reset
+### Define available lists
 
-Delete task by number
-todo prior del 1
-todo tmrr del 3
-todo today del 2
+Lists are defined via the `TODO_LISTS` environment variable:
 
-Move yesterday’s tmrr tasks to today
+export TODO_LISTS="prior tmrr today inbox done someday"
+
+Each entry becomes a valid list automatically.
+
+### Define source and destination for update
+
+By default:
+
+tmrr  -> today
+
+You can customize this behavior:
+
+export TODO_TMRR_KEY=tmrr  
+export TODO_TODAY_KEY=today  
+
+---
+
+## Usage
+
+Show all lists:
+
+todo
+
+Show a specific list:
+
+todo prior  
+todo tmrr  
+todo inbox  
+
+Add an item (quotes not required):
+
+todo prior Finish report  
+todo tmrr Prepare slides  
+todo inbox New idea for project  
+
+Delete an item by number:
+
+todo tmrr del 3  
+todo prior del 1  
+
+Reset a list:
+
+todo today reset  
+todo inbox reset  
+
+Update: move yesterday’s tmrr items to today:
+
 todo update
 
-
 This command:
+- Reads all items in the list defined by `TODO_TMRR_KEY`
+- Moves items dated *yesterday* to the list defined by `TODO_TODAY_KEY`
+- Removes moved items from the source list
+- Leaves all other lists untouched
 
-Reads all entries in tmrr
+---
 
-Moves entries dated yesterday to today
+## Example Workflow
 
-Leaves other entries unchanged
+export TODO_LISTS="prior tmrr today inbox"
 
-Optional: Auto-update with cron
+todo tmrr Review proposal  
+todo tmrr Write slides  
 
-To run todo update automatically every morning:
+todo
 
-Edit your crontab:
+=== prior ===  
+prior list is empty  
 
-crontab -e
+=== tmrr ===  
+tmrr list:  
+1  Review proposal  
+2  Write slides  
 
-Add:
+=== today ===  
+today list is empty  
 
-5 0 * * * /home/USERNAME/bin/todo update
+=== inbox ===  
+inbox list is empty  
 
+Next day:
 
-Runs daily at 00:05.
+todo update  
 
-Example Workflow
-$ todo tmrr Review proposal
-$ todo tmrr Write slides
+todo today
 
-$ todo tmrr
-tmrr list:
-     1  Review proposal
-     2  Write slides
+today list:  
+1  Review proposal  
+2  Write slides  
 
-(next day)
+---
 
-$ todo update
-moved 2 item(s) written yesterday from tmrr to today
+## Optional: Shell Completion
 
-$ todo today
-today list:
-     1  Review proposal
-     2  Write slides
+Bash and Zsh completion can be added so that list names defined in `TODO_LISTS`
+are available via TAB completion.
 
-Customization
+---
 
-This script is easy to extend.
-Possible additions:
+## Design Philosophy
 
-Editing tasks (todo tmrr edit 3)
+- One file per list
+- Plain text over structured databases
+- Explicit commands over automation
+- Easy to extend and modify
 
-Searching tasks
+---
 
-Color output
+## Customization Ideas
 
-Additional lists (done, notes, someday)
+- Add more lists via `TODO_LISTS`
+- Archive tasks (`today -> done`)
+- Move tasks between lists
+- Edit tasks by number
+- Search across lists
+- Colorized output
+- JSON or YAML backends
 
-JSON/YAML storage
+---
+
+## License
+
+MIT License
+

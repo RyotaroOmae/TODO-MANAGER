@@ -3,11 +3,50 @@
 STATE_DIR="$HOME/.todo_state"
 mkdir -p "$STATE_DIR"
 
-PRIOR_FILE="$STATE_DIR/prior"
-TMRR_FILE="$STATE_DIR/tmrr"
-TODAY_FILE="$STATE_DIR/today"
+# 設定（環境変数で上書き可）
+TODO_LISTS_DEFAULT="prior tmrr today"
+TODO_LISTS="${TODO_LISTS:-$TODO_LISTS_DEFAULT}"
 
-# --------- 共通リストハンドラ（prior, today, tmrr など） ---------
+TODO_TMRR_KEY="${TODO_TMRR_KEY:-tmrr}"
+TODO_TODAY_KEY="${TODO_TODAY_KEY:-today}"
+
+# -------------------------------
+# Utils
+# -------------------------------
+
+# list名が TODO_LISTS に含まれるか（完全一致）
+is_valid_list() {
+  local key="$1"
+  for k in $TODO_LISTS; do
+    if [ "$k" = "$key" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+# macOS/Linux 両対応の「指定行削除」
+delete_line_in_file() {
+  local file="$1"
+  local num="$2"
+
+  local tmp
+  tmp=$(mktemp)
+  awk -v n="$num" 'NR != n { print }' "$file" > "$tmp" && mv "$tmp" "$file"
+}
+
+# 昨日の日付（YYYY-MM-DD）を macOS/Linux 両対応で取得
+get_yesterday() {
+  if date -d "yesterday" +%F >/dev/null 2>&1; then
+    date -d "yesterday" +%F
+  else
+    date -v-1d +%F
+  fi
+}
+
+# -------------------------------
+# Core: list handler
+# -------------------------------
 handle_list() {
   local key="$1"
   shift
@@ -34,12 +73,10 @@ handle_list() {
       return
     fi
 
-    # 指定行を削除
-    sed -i "${num}d" "$file"
+    delete_line_in_file "$file" "$num"
     echo "deleted line $num from $key"
     return
   fi
-
 
   # 引数なし → 表示
   if [ -z "$subcmd" ]; then
@@ -50,11 +87,10 @@ handle_list() {
 
     echo "$key list:"
 
-    # tmrr は 1列目が日付、それ以降が本文という前提で本文だけ表示
-    if [ "$key" = "tmrr" ]; then
+    # tmrr（= TODO_TMRR_KEY）は "日付<TAB>本文" を本文だけ表示
+    if [ "$key" = "$TODO_TMRR_KEY" ]; then
       awk '
         {
-          # タブ区切りを想定。なければ行全体を本文とみなす
           n++
           split($0, a, "\t")
           if (length(a) > 1) {
@@ -74,10 +110,9 @@ handle_list() {
   # 追加（2つ目以降全部）
   local item="${*:1}"
 
-  if [ "$key" = "tmrr" ]; then
-    # tmrr は日付付きで保存（YYYY-MM-DD<TAB>本文）
+  if [ "$key" = "$TODO_TMRR_KEY" ]; then
     local today_str
-    today_str=$(date +%F)   # 例: 2025-12-02
+    today_str=$(date +%F)
     printf '%s\t%s\n' "$today_str" "$item" >> "$file"
   else
     echo "$item" >> "$file"
@@ -87,24 +122,25 @@ handle_list() {
 }
 
 show_all_lists() {
-  for key in prior tmrr today; do
+  for key in $TODO_LISTS; do
     echo "=== $key ==="
-    handle_list "$key"      # 引数なし → そのリストを表示
+    handle_list "$key"
     echo
   done
 }
 
-# --------- tmrr → today の更新 ---------
+# -------------------------------
+# update: tmrr -> today
+# -------------------------------
 update_tmrr_to_today() {
-  # GNU date 前提: Linux 等
+  local tmrr_file="$STATE_DIR/$TODO_TMRR_KEY"
+  local today_file="$STATE_DIR/$TODO_TODAY_KEY"
+
   local yesterday
-  yesterday=$(date -d "yesterday" +%F)
+  yesterday=$(get_yesterday)
 
-  # macOS の場合は上の1行をコメントアウトして、下を使う：
-  # yesterday=$(date -v-1d +%F)
-
-  if [ ! -s "$TMRR_FILE" ]; then
-    echo "tmrr list is empty; nothing to update"
+  if [ ! -s "$tmrr_file" ]; then
+    echo "$TODO_TMRR_KEY list is empty; nothing to update"
     return
   fi
 
@@ -114,29 +150,45 @@ update_tmrr_to_today() {
   local moved_count=0
 
   while IFS= read -r line; do
-    # 期待形式: "YYYY-MM-DD<TAB>本文"
-    # タブがない場合は日付なしとして扱い、tmrr に残す
     if [[ "$line" == *$'\t'* ]]; then
       local date_part text_part
       date_part=${line%%$'\t'*}
       text_part=${line#*$'\t'}
 
       if [ "$date_part" = "$yesterday" ]; then
-        echo "$text_part" >> "$TODAY_FILE"
+        echo "$text_part" >> "$today_file"
         moved_count=$((moved_count + 1))
       else
         echo "$line" >> "$tmp"
       fi
     else
-      # フォーマット不明 → そのまま残す
       echo "$line" >> "$tmp"
     fi
-  done < "$TMRR_FILE"
+  done < "$tmrr_file"
 
-  mv "$tmp" "$TMRR_FILE"
+  mv "$tmp" "$tmrr_file"
 
-  echo "moved $moved_count item(s) written on $yesterday from tmrr to today"
+  echo "moved $moved_count item(s) written on $yesterday from $TODO_TMRR_KEY to $TODO_TODAY_KEY"
 }
+
+print_usage() {
+  echo "Usage:"
+  echo "  todo                     # show all lists (from TODO_LISTS)"
+  echo "  todo <list>              # show a list"
+  echo "  todo <list> TEXT...      # add an item to a list"
+  echo "  todo <list> del N        # delete Nth item"
+  echo "  todo <list> reset        # reset list"
+  echo "  todo update              # move yesterday's $TODO_TMRR_KEY items to $TODO_TODAY_KEY"
+  echo
+  echo "Config:"
+  echo "  TODO_LISTS=\"prior tmrr today ...\""
+  echo "  TODO_TMRR_KEY=tmrr"
+  echo "  TODO_TODAY_KEY=today"
+}
+
+# -------------------------------
+# Main
+# -------------------------------
 
 # 引数なし: すべてのリストを表示
 if [ $# -eq 0 ]; then
@@ -144,40 +196,22 @@ if [ $# -eq 0 ]; then
   exit 0
 fi
 
+# update は固定サブコマンド
+if [ "$1" = "update" ]; then
+  update_tmrr_to_today
+  exit 0
+fi
 
-# --------- メイン ---------
-case "$1" in
-  prior)
-    shift
-    handle_list "prior" "$@"
-    ;;
+# それ以外は第1引数を「リスト名」とみなす
+key="$1"
+shift
 
-  tmrr)
-    shift
-    handle_list "tmrr" "$@"
-    ;;
-
-  today)
-    shift
-    handle_list "today" "$@"
-    ;;
-
-  update)
-    update_tmrr_to_today
-    ;;
-
-  *)
-    echo "Usage:"
-    echo "  todo prior [TEXT...]     # prior に追加 / 表示"
-    echo "  todo prior reset         # prior 全消し"
-    echo
-    echo "  todo tmrr [TEXT...]      # tmrr に追加 / 表示（内部的には日付付き）"
-    echo "  todo tmrr reset          # tmrr 全消し"
-    echo
-    echo "  todo today [TEXT...]     # today に追加 / 表示"
-    echo "  todo today reset         # today 全消し"
-    echo
-    echo "  todo update              # tmrr から『昨日書かれたもの』だけ today に移動"
-    ;;
-esac
+if is_valid_list "$key"; then
+  handle_list "$key" "$@"
+else
+  echo "Unknown list: $key"
+  echo
+  print_usage
+  exit 1
+fi
 
